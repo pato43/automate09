@@ -41,26 +41,21 @@ if uploaded_file:
 
     st.markdown("---")
 
-    # 2. Clusterización de clientes
-    st.subheader("Agrupación de Clientes (Clusters)")
-    cluster_data = df.groupby('Cliente_Tipo').agg({
-        'Cantidad': 'mean',
-        'Precio': 'mean',
-        'Calificación_Cliente': 'mean'
-    }).reset_index()
+    # 2. Clusterización de clientes basado en productos
+    st.subheader("Agrupación de Clientes por Producto")
+    cluster_data = df.groupby(['Cliente_Tipo', 'Producto']).agg({'Cantidad': 'sum'}).unstack(fill_value=0)
+    X = cluster_data.values
+    kmeans = KMeans(n_clusters=3, random_state=42)
+    cluster_labels = kmeans.fit_predict(X)
+    cluster_data['Cluster'] = cluster_labels
 
-    X = cluster_data[['Cantidad', 'Precio', 'Calificación_Cliente']]
-    kmeans = KMeans(n_clusters=2, random_state=42)
-    cluster_data['Cluster'] = kmeans.fit_predict(X)
-
-    fig_cluster = px.scatter_3d(cluster_data, x='Cantidad', y='Precio', z='Calificación_Cliente', color='Cluster')
+    fig_cluster = px.scatter(cluster_data.reset_index(), x=cluster_data.columns[0], y=cluster_data.columns[1], color='Cluster')
     st.plotly_chart(fig_cluster, use_container_width=True)
 
     st.markdown("---")
 
     # 3. Predicción de ventas por sucursal
     st.subheader("Predicción de Ventas por Sucursal")
-
     df['Venta_Total'] = df['Precio'] * df['Cantidad']
     ventas_sucursal = df.groupby('Sucursal')['Venta_Total'].sum().reset_index()
 
@@ -79,7 +74,6 @@ if uploaded_file:
 
     # 4. Detección de anomalías
     st.subheader("Detección de Anomalías (Precios y Cantidades)")
-
     anomaly_detector = IsolationForest(contamination=0.05)
     df['Anomalia'] = anomaly_detector.fit_predict(df[['Precio', 'Cantidad']])
 
@@ -93,6 +87,25 @@ if uploaded_file:
     top_productos = df.groupby(['Sucursal', 'Producto'])['Cantidad'].sum().reset_index()
     fig_top = px.bar(top_productos, x='Producto', y='Cantidad', color='Sucursal', barmode='group')
     st.plotly_chart(fig_top, use_container_width=True)
+
+    st.markdown("---")
+
+    # 6. Método de pago
+    st.subheader("Distribución de Métodos de Pago")
+    metodo_pago = df['Método_Pago'].value_counts().reset_index()
+    metodo_pago.columns = ['Metodo', 'Cantidad']
+    fig_pago = px.pie(metodo_pago, names='Metodo', values='Cantidad', title='Uso de Método de Pago')
+    st.plotly_chart(fig_pago, use_container_width=True)
+
+    st.markdown("---")
+
+    # 7. Evolución mensual de ventas
+    st.subheader("Evolución Mensual de Ventas")
+    df['Fecha'] = pd.to_datetime(df['Fecha'])
+    df['Mes'] = df['Fecha'].dt.to_period('M')
+    ventas_mes = df.groupby('Mes')['Venta_Total'].sum().reset_index()
+    fig_mes = px.line(ventas_mes, x='Mes', y='Venta_Total', title='Ventas Acumuladas por Mes')
+    st.plotly_chart(fig_mes, use_container_width=True)
 
 else:
     st.info("Por favor sube un archivo CSV para comenzar.")
