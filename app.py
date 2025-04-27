@@ -43,13 +43,18 @@ if uploaded_file:
 
     # 2. Clusterización de clientes basado en productos
     st.subheader("Agrupación de Clientes por Producto")
-    cluster_data = df.groupby(['Cliente_Tipo', 'Producto']).agg({'Cantidad': 'sum'}).unstack(fill_value=0)
+    # CORREGIDO: usar pivot_table para no crear un multi-index que causa error en KMeans
+    cluster_data = df.pivot_table(index='Cliente_Tipo', columns='Producto', values='Cantidad', aggfunc='sum', fill_value=0)
     X = cluster_data.values
     kmeans = KMeans(n_clusters=3, random_state=42)
     cluster_labels = kmeans.fit_predict(X)
     cluster_data['Cluster'] = cluster_labels
 
-    fig_cluster = px.scatter(cluster_data.reset_index(), x=cluster_data.columns[0], y=cluster_data.columns[1], color='Cluster')
+    fig_cluster = px.scatter(cluster_data.reset_index(), 
+                              x=cluster_data.columns[0], 
+                              y=cluster_data.columns[1], 
+                              color='Cluster',
+                              title="Clusters de Clientes por Productos Comprados")
     st.plotly_chart(fig_cluster, use_container_width=True)
 
     st.markdown("---")
@@ -77,7 +82,9 @@ if uploaded_file:
     anomaly_detector = IsolationForest(contamination=0.05)
     df['Anomalia'] = anomaly_detector.fit_predict(df[['Precio', 'Cantidad']])
 
-    fig_anomalias = px.scatter(df, x='Precio', y='Cantidad', color=df['Anomalia'].map({1: 'Normal', -1: 'Anómalo'}))
+    fig_anomalias = px.scatter(df, x='Precio', y='Cantidad', 
+                               color=df['Anomalia'].map({1: 'Normal', -1: 'Anómalo'}),
+                               title="Anomalías detectadas en Precios y Cantidades")
     st.plotly_chart(fig_anomalias, use_container_width=True)
 
     st.markdown("---")
@@ -85,7 +92,8 @@ if uploaded_file:
     # 5. Productos más vendidos por zona
     st.subheader("Productos Más Vendidos por Zona")
     top_productos = df.groupby(['Sucursal', 'Producto'])['Cantidad'].sum().reset_index()
-    fig_top = px.bar(top_productos, x='Producto', y='Cantidad', color='Sucursal', barmode='group')
+    fig_top = px.bar(top_productos, x='Producto', y='Cantidad', color='Sucursal', barmode='group',
+                     title="Productos más vendidos por sucursal")
     st.plotly_chart(fig_top, use_container_width=True)
 
     st.markdown("---")
