@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestRegressor, IsolationForest
 from sklearn.model_selection import train_test_split
@@ -43,27 +42,30 @@ def show_metrics(df):
 
 
 def clustering(df, n_clusters):
-    st.subheader("🔵 Clusterización de Clientes por Producto")
+    st.subheader("🔵 Clusterización de Sucursales por Producto")
+    # Pivot por sucursal en lugar de Cliente_Tipo para obtener más puntos
     pivot = df.pivot_table(
-        index='Cliente_Tipo',
+        index='Sucursal',
         columns='Producto',
         values='Cantidad',
         aggfunc='sum',
         fill_value=0
     )
     X = pivot.values
-    kmeans = KMeans(n_clusters=min(n_clusters, X.shape[0]), random_state=42)
+    k = min(n_clusters, X.shape[0])
+    kmeans = KMeans(n_clusters=k, random_state=42)
     pivot['Cluster'] = kmeans.fit_predict(X)
     fig = px.scatter(
         pivot.reset_index(),
         x=pivot.columns[0],
         y=pivot.columns[1],
         color='Cluster',
-        title="Clusters de Clientes según Productos Comprados"
+        hover_data=['Sucursal'],
+        title="Clusters de Sucursales según mix de productos"
     )
     fig.update_layout(height=450)
     st.plotly_chart(fig, use_container_width=True)
-    st.write("Agrupación de clientes según patrones de compra.")
+    st.write("Agrupación de sucursales por similitud en ventas de productos.")
 
 
 def prediction(df):
@@ -123,15 +125,22 @@ def insights(df):
     with col1:
         st.write("🟡 Top 5 Productos")
         top = df.groupby('Producto')['Cantidad'].sum().nlargest(5).reset_index()
-        st.bar_chart(top.set_index('Producto'))
+        fig_top = px.bar(top, x='Producto', y='Cantidad', title="Top 5 Productos")
+        fig_top.update_layout(height=350)
+        st.plotly_chart(fig_top, use_container_width=True)
     with col2:
         st.write("🟠 Métodos de Pago")
-        pay = df['Método_Pago'].value_counts()
-        st.pie_chart(pay)
+        pay = df['Método_Pago'].value_counts().reset_index()
+        pay.columns = ['Metodo', 'Cantidad']
+        fig_pay = px.pie(pay, names='Metodo', values='Cantidad', title='Métodos de Pago')
+        fig_pay.update_layout(height=350)
+        st.plotly_chart(fig_pay, use_container_width=True)
     with col3:
-        st.write("🟢 Evolución Mensual")
-        trend = df.groupby('Mes')['Venta_Total'].sum()
-        st.line_chart(trend)
+        st.write("🟢 Tendencia Mensual")
+        trend = df.groupby('Mes')['Venta_Total'].sum().reset_index()
+        fig_trend = px.line(trend, x='Mes', y='Venta_Total', title='Tendencia Mensual')
+        fig_trend.update_layout(height=350)
+        st.plotly_chart(fig_trend, use_container_width=True)
 
 
 # Contenido principal
