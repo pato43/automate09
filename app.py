@@ -21,7 +21,8 @@ if uploaded_file:
     # Conversión de fecha y cálculo de Venta_Total
     df['Fecha'] = pd.to_datetime(df['Fecha'])
     df['Venta_Total'] = df['Precio'] * df['Cantidad']
-    df['Mes'] = df['Fecha'].dt.to_period('M')
+    # Convertir Mes a string para evitar problemas de serialización
+    df['Mes'] = df['Fecha'].dt.to_period('M').astype(str)
 
     st.subheader("Vista previa de los datos")
     st.dataframe(df.head())
@@ -61,9 +62,9 @@ if uploaded_file:
         title="Clientes agrupados por productos"
     )
 
-    # 2. Predicción de Ventas por Sucursal (último mes)
+    # 2. Predicción de Ventas por Sucursal (Próximo Mes)
     st.subheader("🟣 Predicción de Ventas por Sucursal (Próximo Mes)")
-    # Agregar mes numérico para modelar
+    # Crear índice numérico de mes para modelar
     df['MesNum'] = df['Fecha'].dt.year * 12 + df['Fecha'].dt.month
     ventas_mes_suc = df.groupby(['Sucursal', 'MesNum'])['Venta_Total'].sum().reset_index()
     # Preparar datos de entrenamiento
@@ -77,16 +78,21 @@ if uploaded_file:
     last_mes = ventas_mes_suc['MesNum'].max()
     next_mes = last_mes + 1
     sucursales = ventas_mes_suc['Sucursal'].unique()
-    X_pred = pd.DataFrame({'MesNum': [next_mes]*len(sucursales),
-                           **{s: [1 if s==s else 0 for _ in range(len(sucursales))] for s in sucursales}})
-    # Ajuste columnas
-    X_pred = pd.get_dummies(pd.DataFrame({'Sucursal': sucursales}))
-    X_pred['MesNum'] = next_mes
+    X_pred = pd.DataFrame({
+        'Sucursal': sucursales,
+        'MesNum': next_mes
+    })
+    X_pred = pd.get_dummies(X_pred.set_index('Sucursal')).reset_index()
+    # Reindexar columnas para coincidir con X
     X_pred = X_pred.reindex(columns=X.columns, fill_value=0)
     y_pred = rf.predict(X_pred)
     df_pred = pd.DataFrame({'Sucursal': sucursales, 'Predicción Venta Próximo Mes': y_pred})
-    fig_pred = px.bar(df_pred, x='Sucursal', y='Predicción Venta Próximo Mes',
-                     title="Predicción Ventas Próximo Mes por Sucursal")
+    fig_pred = px.bar(
+        df_pred,
+        x='Sucursal',
+        y='Predicción Venta Próximo Mes',
+        title="Predicción Ventas Próximo Mes por Sucursal"
+    )
 
     # 3. Detección de Anomalías
     st.subheader("🟥 Detección de Anomalías en Precios y Cantidades")
@@ -135,7 +141,7 @@ if uploaded_file:
         title='Métodos de Pago'
     )
 
-    # 6. Evolución Mensual de Ventas (real)  
+    # 6. Evolución Mensual de Ventas (real)
     st.subheader("🟢 Evolución Mensual de Ventas")
     ventas_mes = df.groupby('Mes')['Venta_Total'].sum().reset_index()
     fig_mes = px.line(
