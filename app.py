@@ -12,18 +12,23 @@ st.set_page_config(page_title="Dashboard Ventas Electrónicos", layout="wide")
 st.title("📈 Dashboard de Ventas de Electrónicos")
 st.write("Sube tu archivo CSV para analizar las ventas.")
 
-# Cargar archivo
+# Subir archivo
 uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
+
+    # Conversión de fecha y cálculo de Venta_Total
+    df['Fecha'] = pd.to_datetime(df['Fecha'])
+    df['Venta_Total'] = df['Precio'] * df['Cantidad']
+    df['Mes'] = df['Fecha'].dt.to_period('M')
 
     st.subheader("Vista previa de los datos")
     st.dataframe(df.head())
     st.markdown("---")
 
     # Métricas generales
-    total_ventas = (df['Precio'] * df['Cantidad']).sum()
+    total_ventas = df['Venta_Total'].sum()
     total_transacciones = df.shape[0]
     ticket_promedio = total_ventas / total_transacciones
 
@@ -43,11 +48,10 @@ if uploaded_file:
         aggfunc='sum',
         fill_value=0
     )
-    X = cluster_data.values
-    n_samples = X.shape[0]
-    n_clusters = min(3, n_samples)
+    Xc = cluster_data.values
+    n_clusters = min(3, Xc.shape[0])
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-    labels = kmeans.fit_predict(X)
+    labels = kmeans.fit_predict(Xc)
     cluster_data['Cluster'] = labels
     fig_cluster = px.scatter(
         cluster_data.reset_index(),
@@ -57,24 +61,32 @@ if uploaded_file:
         title="Clientes agrupados por productos"
     )
 
-    # 2. Predicción de Ventas por Sucursal
-    st.subheader("🟣 Predicción de Ventas por Sucursal")
-    df['Venta_Total'] = df['Precio'] * df['Cantidad']
-    ventas_s = df.groupby('Sucursal')['Venta_Total'].sum().reset_index()
-    X_train, X_test, y_train, y_test = train_test_split(
-        pd.get_dummies(ventas_s['Sucursal']),
-        ventas_s['Venta_Total'],
-        test_size=0.2,
-        random_state=42
-    )
-    model = RandomForestRegressor()
-    model.fit(X_train, y_train)
-    fig_pred = px.bar(
-        ventas_s,
-        x='Sucursal',
-        y='Venta_Total',
-        title="Ventas Reales por Sucursal"
-    )
+    # 2. Predicción de Ventas por Sucursal (último mes)
+    st.subheader("🟣 Predicción de Ventas por Sucursal (Próximo Mes)")
+    # Agregar mes numérico para modelar
+    df['MesNum'] = df['Fecha'].dt.year * 12 + df['Fecha'].dt.month
+    ventas_mes_suc = df.groupby(['Sucursal', 'MesNum'])['Venta_Total'].sum().reset_index()
+    # Preparar datos de entrenamiento
+    X = pd.get_dummies(ventas_mes_suc['Sucursal'])
+    X['MesNum'] = ventas_mes_suc['MesNum']
+    y = ventas_mes_suc['Venta_Total']
+    # Entrenar modelo
+    rf = RandomForestRegressor(random_state=42)
+    rf.fit(X, y)
+    # Predecir siguiente mes
+    last_mes = ventas_mes_suc['MesNum'].max()
+    next_mes = last_mes + 1
+    sucursales = ventas_mes_suc['Sucursal'].unique()
+    X_pred = pd.DataFrame({'MesNum': [next_mes]*len(sucursales),
+                           **{s: [1 if s==s else 0 for _ in range(len(sucursales))] for s in sucursales}})
+    # Ajuste columnas
+    X_pred = pd.get_dummies(pd.DataFrame({'Sucursal': sucursales}))
+    X_pred['MesNum'] = next_mes
+    X_pred = X_pred.reindex(columns=X.columns, fill_value=0)
+    y_pred = rf.predict(X_pred)
+    df_pred = pd.DataFrame({'Sucursal': sucursales, 'Predicción Venta Próximo Mes': y_pred})
+    fig_pred = px.bar(df_pred, x='Sucursal', y='Predicción Venta Próximo Mes',
+                     title="Predicción Ventas Próximo Mes por Sucursal")
 
     # 3. Detección de Anomalías
     st.subheader("🟥 Detección de Anomalías en Precios y Cantidades")
@@ -88,7 +100,7 @@ if uploaded_file:
         title="Detección de Anomalías"
     )
 
-    # Mostrar las tres gráficas principales en una fila
+    # Primera fila de gráficas: Cluster, Predicción, Anomalías
     st.markdown("### 🔍 Análisis General")
     g1, g2, g3 = st.columns(3)
     with g1:
@@ -123,10 +135,8 @@ if uploaded_file:
         title='Métodos de Pago'
     )
 
-    # 6. Evolución Mensual de Ventas
+    # 6. Evolución Mensual de Ventas (real)  
     st.subheader("🟢 Evolución Mensual de Ventas")
-    df['Fecha'] = pd.to_datetime(df['Fecha'])
-    df['Mes'] = df['Fecha'].dt.to_period('M').astype(str)
     ventas_mes = df.groupby('Mes')['Venta_Total'].sum().reset_index()
     fig_mes = px.line(
         ventas_mes,
@@ -135,7 +145,7 @@ if uploaded_file:
         title='Ventas por Mes'
     )
 
-    # Mostrar los insights secundarios en fila
+    # Segunda fila de gráficas: Productos Top, Pago, Evolución
     st.markdown("### 📊 Otros Insights")
     h1, h2, h3 = st.columns(3)
     with h1:
